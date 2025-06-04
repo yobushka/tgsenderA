@@ -85,12 +85,22 @@
   // --- 4. Собираем контакты ---
   // Массив для накопления уникальных элементов контактов
   const contactDivsArr = [];
-  const contactDivsSet = new Set();
+  const contactKeysSet = new Set(); // теперь фильтруем по ключу
+  function getContactKey(div) {
+    // Пробуем найти уникальный id, если есть
+    const peerId = div.getAttribute('data-peer-id') || div.dataset.peerId;
+    if (peerId) return peerId;
+    // Если нет id, используем имя
+    const nameEl = div.querySelector('.fullName');
+    const name = nameEl ? nameEl.textContent.trim() : '';
+    return name;
+  }
   function scanVisibleContacts() {
     const newDivs = Array.from(document.querySelectorAll('.chat-list.custom-scroll .contact-list-item'));
     newDivs.forEach(div => {
-      if (!contactDivsSet.has(div)) {
-        contactDivsSet.add(div);
+      const key = getContactKey(div);
+      if (key && !contactKeysSet.has(key)) {
+        contactKeysSet.add(key);
         contactDivsArr.push(div);
       }
     });
@@ -99,7 +109,7 @@
       const nameEl = item.querySelector('.fullName');
       return nameEl ? nameEl.textContent.trim() : '(Без имени)';
     });
-    console.log('[TGSENDER][DEBUG] Накоплено контактов:', contactDivsArr.length, names);
+    console.log('[TGSENDER][DEBUG] Накоплено контактов (уникальных):', contactDivsArr.length, names);
   }
   // Запускаем периодический сбор сразу после overlay
   let scanInterval = setInterval(scanVisibleContacts, 300);
@@ -119,12 +129,16 @@
     };
   });
 
-  // Формируем массив контактов для рассылки
+  // Формируем массив контактов для рассылки (только уникальные по ключу)
+  const usedKeys = new Set();
   const contacts = contactDivsArr.map(item => {
     const button = item.querySelector('.ListItem-button[role="button"]');
     const nameEl = item.querySelector('.fullName');
     const name = nameEl ? nameEl.textContent.trim() : '(Без имени)';
-    return button && name ? { name, element: button } : null;
+    const key = getContactKey(item);
+    if (!button || !name || !key || usedKeys.has(key)) return null;
+    usedKeys.add(key);
+    return { name, element: button };
   }).filter(Boolean);
 
   // Отладка: выводим список контактов в консоль
