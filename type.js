@@ -330,6 +330,9 @@
 
     let failedCount = 0;
     let successCount = 0;
+    // Массивы для хранения имен контактов с успешной и неуспешной отправкой
+    const successfulContacts = [];
+    const failedContacts = [];
     for (let i = 0; i < selected.length; ++i) {
       const contact = selected[i];
       console.log(`Processing contact ${i + 1}/${selected.length}: ${contact.name}`);
@@ -1349,24 +1352,206 @@
         if (sendSuccess) {
           console.log('Message send: SUCCESS for', contact.name);
           successCount++;
+          successfulContacts.push(contact.name);
         } else {
           console.warn('Message send: FAILED for', contact.name);
           failedCount++;
+          failedContacts.push(contact.name);
         }
       } else {
         // Updated warning to reflect retries
         console.warn('Не удалось отправить сообщение для', contact.name, '- поле ввода или кнопка (даже после нескольких попыток) не найдены.');
         failedCount++;
+        failedContacts.push(contact.name);
       }
     }
-    // Показываем overlay обратно после завершения
-    overlay.style.display = 'flex';
-    console.log('Overlay restored');
+    // Создаем детальный overlay для результатов
+    console.log('Creating detailed results overlay');
     
-    // Показываем результаты рассылки с учетом успехов и неудач
-    const resultMessage = `Результаты отправки:\n✅ Успешно: ${successCount}\n❌ Ошибок: ${failedCount}`;
-    alert(resultMessage);
+    // Создаем новый overlay для результатов
+    const resultsOverlay = document.createElement('div');
+    Object.assign(resultsOverlay.style, {
+      position: 'fixed', zIndex: 9999, top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+    });
+    
+    const resultsPanel = document.createElement('div');
+    Object.assign(resultsPanel.style, {
+      background: '#fff', padding: '20px', borderRadius: '12px', 
+      width: '420px', maxWidth: '90vw', maxHeight: '85vh',
+      boxShadow: '0 4px 24px #0002', fontFamily: 'sans-serif', color: '#222',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden'
+    });
+    
+    // Заголовок
+    const resultsTitle = document.createElement('h3');
+    resultsTitle.innerText = 'Результаты отправки сообщений';
+    resultsTitle.style.marginTop = '0';
+    resultsTitle.style.textAlign = 'center';
+    resultsTitle.style.paddingBottom = '10px';
+    resultsTitle.style.borderBottom = '1px solid #eaeaea';
+    resultsPanel.appendChild(resultsTitle);
+    
+    // Панель статистики
+    const statsPanel = document.createElement('div');
+    statsPanel.style.display = 'flex';
+    statsPanel.style.justifyContent = 'center';
+    statsPanel.style.margin = '10px 0 15px 0';
+    
+    // Успешные
+    const successStats = document.createElement('div');
+    successStats.style.display = 'flex';
+    successStats.style.flexDirection = 'column';
+    successStats.style.alignItems = 'center';
+    successStats.style.margin = '0 15px';
+    successStats.style.padding = '8px 15px';
+    successStats.style.borderRadius = '8px';
+    successStats.style.background = '#e8f5e9';
+    
+    const successIcon = document.createElement('div');
+    successIcon.innerHTML = '✅';
+    successIcon.style.fontSize = '28px';
+    successIcon.style.marginBottom = '5px';
+    
+    const successCount_el = document.createElement('div');
+    successCount_el.innerText = 'Успешно:';
+    successCount_el.style.fontSize = '13px';
+    successCount_el.style.color = '#388e3c';
+    
+    const successValue = document.createElement('div');
+    successValue.innerText = successCount;
+    successValue.style.fontSize = '24px';
+    successValue.style.fontWeight = 'bold';
+    successValue.style.color = '#388e3c';
+    
+    successStats.appendChild(successIcon);
+    successStats.appendChild(successCount_el);
+    successStats.appendChild(successValue);
+    
+    // Неудачные
+    const failedStats = document.createElement('div');
+    failedStats.style.display = 'flex';
+    failedStats.style.flexDirection = 'column';
+    failedStats.style.alignItems = 'center';
+    failedStats.style.margin = '0 15px';
+    failedStats.style.padding = '8px 15px';
+    failedStats.style.borderRadius = '8px';
+    failedStats.style.background = '#ffebee';
+    
+    const failedIcon = document.createElement('div');
+    failedIcon.innerHTML = '❌';
+    failedIcon.style.fontSize = '28px';
+    failedIcon.style.marginBottom = '5px';
+    
+    const failedCount_el = document.createElement('div');
+    failedCount_el.innerText = 'Ошибок:';
+    failedCount_el.style.fontSize = '13px';
+    failedCount_el.style.color = '#d32f2f';
+    
+    const failedValue = document.createElement('div');
+    failedValue.innerText = failedCount;
+    failedValue.style.fontSize = '24px';
+    failedValue.style.fontWeight = 'bold';
+    failedValue.style.color = '#d32f2f';
+    
+    failedStats.appendChild(failedIcon);
+    failedStats.appendChild(failedCount_el);
+    failedStats.appendChild(failedValue);
+    
+    statsPanel.appendChild(successStats);
+    statsPanel.appendChild(failedStats);
+    resultsPanel.appendChild(statsPanel);
+    
+    // Контейнер для списков
+    const listsContainer = document.createElement('div');
+    listsContainer.style.display = 'flex';
+    listsContainer.style.maxHeight = '350px';
+    listsContainer.style.minHeight = '100px';
+    listsContainer.style.overflowY = 'auto';
+    listsContainer.style.marginBottom = '15px';
+    listsContainer.style.padding = '5px';
+    listsContainer.style.border = '1px solid #eaeaea';
+    listsContainer.style.borderRadius = '8px';
+    
+    // Функция для создания списка контактов
+    function createContactList(title, contacts, successType) {
+      const container = document.createElement('div');
+      container.style.flex = '1';
+      container.style.minWidth = '120px';
+      container.style.padding = '0 10px';
+      
+      if (contacts.length > 0) {
+        const titleEl = document.createElement('div');
+        titleEl.innerText = title;
+        titleEl.style.fontWeight = 'bold';
+        titleEl.style.marginBottom = '8px';
+        titleEl.style.color = successType ? '#388e3c' : '#d32f2f';
+        container.appendChild(titleEl);
+        
+        const list = document.createElement('ul');
+        list.style.margin = '0';
+        list.style.padding = '0 0 0 20px';
+        
+        contacts.forEach(contactName => {
+          const item = document.createElement('li');
+          item.innerText = contactName;
+          item.style.marginBottom = '4px';
+          list.appendChild(item);
+        });
+        
+        container.appendChild(list);
+      } else {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.innerText = successType ? 
+          'Нет успешно отправленных сообщений' : 
+          'Нет неудачных отправок';
+        emptyMsg.style.fontStyle = 'italic';
+        emptyMsg.style.color = '#888';
+        emptyMsg.style.padding = '10px 0';
+        emptyMsg.style.textAlign = 'center';
+        container.appendChild(emptyMsg);
+      }
+      
+      return container;
+    }
+    
+    // Добавляем списки контактов
+    listsContainer.appendChild(createContactList('Успешно отправлено:', successfulContacts, true));
+    
+    // Разделитель
+    const divider = document.createElement('div');
+    divider.style.width = '1px';
+    divider.style.background = '#eaeaea';
+    divider.style.margin = '0 10px';
+    listsContainer.appendChild(divider);
+    
+    listsContainer.appendChild(createContactList('Не удалось отправить:', failedContacts, false));
+    
+    resultsPanel.appendChild(listsContainer);
+    
+    // Добавляем кнопку закрытия
+    const resultCloseBtn = document.createElement('button');
+    resultCloseBtn.textContent = 'Закрыть';
+    resultCloseBtn.style.padding = '10px 20px';
+    resultCloseBtn.style.alignSelf = 'center';
+    resultCloseBtn.style.borderRadius = '6px';
+    resultCloseBtn.style.background = '#48a1ec';
+    resultCloseBtn.style.color = '#fff';
+    resultCloseBtn.style.fontWeight = 'bold';
+    resultCloseBtn.style.border = 'none';
+    resultCloseBtn.style.cursor = 'pointer';
+    resultCloseBtn.style.fontSize = '14px';
+    resultCloseBtn.onclick = () => resultsOverlay.remove();
+    
+    resultsPanel.appendChild(resultCloseBtn);
+    resultsOverlay.appendChild(resultsPanel);
+    document.body.appendChild(resultsOverlay);
+    
     console.log(`Bulk message sending finished. Success: ${successCount}, Failed: ${failedCount}`);
+    console.log('Successful contacts:', successfulContacts);
+    console.log('Failed contacts:', failedContacts);
+    
+    // Удаляем старый overlay
     overlay.remove();
   };
 })();
