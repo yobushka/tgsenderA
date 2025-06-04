@@ -62,9 +62,19 @@
   scrollTitle.innerText = 'Прокрутите список контактов';
   scrollPanel.appendChild(scrollTitle);
   const scrollText = document.createElement('div');
-  scrollText.innerHTML =
-    'Пожалуйста, вручную прокрутите <b>список контактов</b> вниз до самого конца, чтобы все контакты были загружены.<br><br>' +
-    '<b>Когда закончите — нажмите кнопку "Готово" ниже.</b>';
+  
+  // --- 4. Собираем контакты ---
+  // Массив для накопления уникальных элементов контактов
+  const contactDivsArr = [];
+  const contactKeysSet = new Set(); // теперь фильтруем по ключу
+  
+  function updateScrollText() {
+    scrollText.innerHTML =
+      'Пожалуйста, вручную прокрутите <b>список контактов</b> вниз до самого конца, чтобы все контакты были загружены.<br><br>' +
+      '<b>Когда закончите — нажмите кнопку "Готово" ниже.</b><br><br>' +
+      `<span style="color:#48a1ec;font-weight:bold;">Найдено контактов: ${contactDivsArr.length}</span>`;
+  }
+  updateScrollText();
   scrollText.style.margin = '18px 0 24px 0';
   scrollPanel.appendChild(scrollText);
   const readyBtn = document.createElement('button');
@@ -81,11 +91,6 @@
   scrollPanel.appendChild(readyBtn);
   scrollOverlay.appendChild(scrollPanel);
   document.body.appendChild(scrollOverlay);
-
-  // --- 4. Собираем контакты ---
-  // Массив для накопления уникальных элементов контактов
-  const contactDivsArr = [];
-  const contactKeysSet = new Set(); // теперь фильтруем по ключу
   function getContactKey(div) {
     // Пробуем найти уникальный id, если есть
     const peerId = div.getAttribute('data-peer-id') || div.dataset.peerId;
@@ -110,6 +115,7 @@
       return nameEl ? nameEl.textContent.trim() : '(Без имени)';
     });
     console.log('[TGSENDER][DEBUG] Накоплено контактов (уникальных):', contactDivsArr.length, names);
+    updateScrollText(); // update banner count
   }
   // Запускаем периодический сбор сразу после overlay
   let scanInterval = setInterval(scanVisibleContacts, 300);
@@ -322,6 +328,8 @@
     overlay.style.display = 'none';
     console.log('Overlay hidden to prevent click blocking');
 
+    let failedCount = 0;
+    let successCount = 0;
     for (let i = 0; i < selected.length; ++i) {
       const contact = selected[i];
       console.log(`Processing contact ${i + 1}/${selected.length}: ${contact.name}`);
@@ -508,6 +516,7 @@
         offsetParent: contact.element.offsetParent,
         style: contact.element.style.cssText
       });
+
       
       // Прокручиваем к контакту, чтобы убедиться, что он видим
       contact.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -529,9 +538,9 @@
       if (!clickable || !clickable.closest('.ListItem, .ListItem-button, .contact-list-item')) {
         clickable = contact.element;
       }
-      // Пробуем разные методы переключения на контакт
+      // Пробуем разные методы переключения на контакт - оставляем только 2 оптимальных варианта
       let switchSuccess = false;
-      // Новый блок: всегда сбрасываем список контактов через бургер-меню и "Contacts"
+      // Метод 1: Сначала пробуем через бургер-меню (сброс до списка контактов)
       try {
         // Открываем бургер-меню
         const burger = document.querySelector('.ripple-container');
@@ -555,51 +564,83 @@
         }
       } catch (e) { console.warn('Burger/Contacts reset failed', e); }
 
-      // Метод 1: простой клик
+      // Метод 2: Простой клик по элементу контакта
       try {
+        console.log('Attempting simple click on contact element');
         contact.element.click();
       } catch (e) {
         console.warn('Error in simple click method:', e);
       }
-      
-      // Метод 2: клик с coordinates
+
+      // Метод 3: улучшенная последовательность клика на основе трассировки (mousedown + mouseup)
       await new Promise(r => setTimeout(r, 200));
       try {
-        const rect = contact.element.getBoundingClientRect();
+        console.log('Attempting enhanced click sequence based on trace data');
+
+        // Ищем ripple-container в элементе контакта по аналогии с трассировкой
+        let elementToClick = null;
+        const ripple = contact.element.querySelector('.ripple-container');
+        const listItem = contact.element.closest('.ListItem-button[role="button"]');
+        const rippleInListItem = listItem ? listItem.querySelector('.ripple-container') : null;
+        
+        if (ripple && ripple.getBoundingClientRect().width > 0) {
+          elementToClick = ripple;
+          console.log('Using ripple-container for click sequence');
+        } else if (rippleInListItem && rippleInListItem.getBoundingClientRect().width > 0) {
+          elementToClick = rippleInListItem;
+          console.log('Using ripple-container in ListItem-button for click sequence');
+        } else {
+          elementToClick = contact.element;
+          console.log('Using original element for click sequence');
+        }
+        
+        // Получаем координаты центра элемента для клика
+        const rect = elementToClick.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        // Шаг 1: Событие mousedown (нажатие кнопки мыши)
+        console.log('Dispatching mousedown event');
+        const mouseDownEvent = new MouseEvent('mousedown', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          button: 0,
+          buttons: 1,
+          clientX: centerX,
+          clientY: centerY
+        });
+        elementToClick.dispatchEvent(mouseDownEvent);
+        
+        // Задержка между событиями (~180ms как в трассировке)
+        await new Promise(r => setTimeout(r, 180));
+        
+        // Шаг 2: Событие mouseup (отпускание кнопки мыши)
+        console.log('Dispatching mouseup event');
+        const mouseUpEvent = new MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          button: 0,
+          buttons: 0,
+          clientX: centerX,
+          clientY: centerY
+        });
+        elementToClick.dispatchEvent(mouseUpEvent);
+        
+        // Шаг 3: Стандартное событие click для совместимости
+        console.log('Dispatching standard click event for compatibility');
         const clickEvent = new MouseEvent('click', {
           bubbles: true,
           cancelable: true,
           view: window,
-          clientX: rect.left + rect.width / 2,
-          clientY: rect.top + rect.height / 2
+          clientX: centerX,
+          clientY: centerY
         });
-        contact.element.dispatchEvent(clickEvent);
+        elementToClick.dispatchEvent(clickEvent);
       } catch (e) {
-        console.warn('Error in click with coordinates method:', e);
+        console.warn('Error in enhanced click sequence method:', e);
       }
-      
-      // Метод 3: поиск и клик по родительскому элементу
-      await new Promise(r => setTimeout(r, 200));
-      try {
-        const parentClickable = contact.element.closest('.chat-item-clickable, .ListItem');
-        if (parentClickable && parentClickable !== contact.element) {
-          parentClickable.click();
-        }
-      } catch (e) {
-        console.warn('Error in parent click method:', e);
-      }
-      
-      // Метод 4: стимулируем реальный клик через события mousedown/mouseup
-      await new Promise(r => setTimeout(r, 200));
-      try {
-        contact.element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        await new Promise(r => setTimeout(r, 50));
-        contact.element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-        contact.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      } catch (e) {
-        console.warn('Error in real click stimulation method:', e);
-      }
-      
       // Проверяем правильное переключение контакта с несколькими попытками
       let maxSwitchAttempts = 8;
       let currentChatName = null;
@@ -681,44 +722,295 @@
           // Ищем строку поиска
           let searchInput = document.querySelector('input[type="search"], input[placeholder*="earch"], .search-input input');
           if (searchInput) {
+            console.log('Search input found:', searchInput);
             searchInput.focus();
             searchInput.value = '';
             searchInput.dispatchEvent(new Event('input', { bubbles: true }));
             await new Promise(r => setTimeout(r, 200));
             // Вводим имя контакта
-            for (let i = 0; i < contact.name.length; i++) {
-              searchInput.value += contact.name[i];
+            console.log(`Typing contact name: "${contact.name}" into search input.`);
+            for (let charIndex = 0; charIndex < contact.name.length; charIndex++) {
+              searchInput.value += contact.name[charIndex];
               searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-              await new Promise(r => setTimeout(r, 30));
+              await new Promise(r => setTimeout(r, 50)); // Adjusted timing slightly
             }
-            await new Promise(r => setTimeout(r, 700));
+            await new Promise(r => setTimeout(r, 700)); // Wait for search results to populate
             // Ищем элемент в результатах поиска
-            let found = false;
+            let foundInSearch = false; // Renamed to avoid conflict with outer 'found'
             const searchResults = Array.from(document.querySelectorAll('.ListItem, .chat-item-clickable, .contact-list-item'));
+            console.log(`Found ${searchResults.length} items in search results after typing name.`);
+
             for (const el of searchResults) {
               const nameEl = el.querySelector('.fullName, .title, .peer-title, .chat-title');
               if (nameEl && nameEl.textContent && nameEl.textContent.trim().toLowerCase().includes(contact.name.toLowerCase())) {
+                console.log('Matching contact found in search results list:', nameEl.textContent.trim(), el);
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                await new Promise(r => setTimeout(r, 200));
-                el.click();
-                found = true;
+                await new Promise(r => setTimeout(r, 500));
+
+                // КРИТИЧЕСКОЕ УЛУЧШЕНИЕ: явно ищем и используем ссылку (a) из результатов поиска
+                console.log('Contact element structure analysis:', {
+                  html: el.outerHTML.substring(0, 500),
+                  childNodes: Array.from(el.childNodes).map(node => node.nodeName),
+                  hasAnchor: !!el.querySelector('a')
+                });
+                
+                // Поиск элемента <a> с атрибутом href - САМЫЙ ПРИОРИТЕТНЫЙ метод
+                const anchorElement = el.querySelector('a[href], a.ListItem-button');
+                if (anchorElement) {
+                  console.log('Found anchor element with href:', anchorElement.getAttribute('href') || 'no-href');
+                }
+                
+                // Метод 1: Прямой доступ по URL - самый надежный способ переключения
+                try {
+                  if (anchorElement && anchorElement.getAttribute('href')) {
+                    const contactHref = anchorElement.getAttribute('href');
+                    console.log('Using direct URL navigation to contact:', contactHref);
+                    
+                    // Записываем оригинальное местоположение
+                    const originalHash = window.location.hash;
+                    
+                    // Направляем на новый URL
+                    if (contactHref.startsWith('#')) {
+                      console.log('Navigating to hash URL:', contactHref);
+                      window.location.hash = contactHref;
+                    } else if (contactHref.startsWith('/')) {
+                      console.log('Navigating to path URL:', contactHref);
+                      window.location.pathname = contactHref;
+                    } else {
+                      console.log('Setting complete URL:', contactHref);
+                      window.location.href = contactHref;
+                    }
+                    
+                    // Даем время для перехода
+                    await new Promise(r => setTimeout(r, 500));
+                    
+                    // Проверяем результат (если хэш не изменился, значит URL-навигация не сработала)
+                    if (window.location.hash === originalHash && contactHref !== originalHash) {
+                      console.log('URL navigation did not change the hash, will try direct click methods');
+                    } else {
+                      console.log('URL navigation succeeded, hash changed to:', window.location.hash);
+                      // Пропускаем остальные методы клика, так как URL-навигация сработала
+                      foundInSearch = true;
+                      break;
+                    }
+                  }
+                } catch (urlError) {
+                  console.warn('URL navigation error:', urlError);
+                }
+                
+                // Если URL-навигация не сработала, используем прямые клики
+                console.log('Proceeding with direct click methods');
+                
+                // Определяем элемент для клика в порядке приоритета
+                let elementToClick = null;
+                
+                // Выбор элемента для клика в порядке приоритета
+                if (anchorElement) {
+                  // Приоритет 1: Явная ссылка <a> - лучший вариант
+                  elementToClick = anchorElement;
+                  console.log('PRIORITY 1: Using direct anchor element for click');
+                } else {
+                  // Если нет ссылки, пробуем остальные варианты поиска
+                  const listItemButton = el.querySelector('.ListItem-button[role="button"]');
+                  
+                  // Ищем ripple-container по разным путям
+                  let rippleInChatInfo = null;
+                  if (listItemButton) {
+                    const chatInfo = listItemButton.querySelector('.ChatInfo');
+                    if (chatInfo) {
+                      rippleInChatInfo = chatInfo.querySelector('.ripple-container');
+                    }
+                  }
+                  
+                  // Другие варианты ripple-container
+                  const rippleInListItem = listItemButton ? listItemButton.querySelector('.ripple-container') : null;
+                  const rippleGeneral = el.querySelector('.ripple-container');
+                  
+                  // Выбираем элемент в порядке предпочтения
+                  if (listItemButton) {
+                    elementToClick = listItemButton;
+                    console.log('PRIORITY 2: Using ListItem-button for click');
+                  } else if (rippleInChatInfo && rippleInChatInfo.getBoundingClientRect().width > 0) {
+                    elementToClick = rippleInChatInfo;
+                    console.log('PRIORITY 3: Using ripple-container inside ChatInfo for click');
+                  } else if (rippleInListItem && rippleInListItem.getBoundingClientRect().width > 0) {
+                    elementToClick = rippleInListItem;
+                    console.log('PRIORITY 4: Using ripple-container in ListItem-button for click');
+                  } else if (rippleGeneral && rippleGeneral.getBoundingClientRect().width > 0) {
+                    elementToClick = rippleGeneral;
+                    console.log('PRIORITY 5: Using general ripple-container for click');
+                  } else {
+                    elementToClick = el;
+                    console.log('PRIORITY 6: Using main element for click in search as last resort');
+                  }
+                }
+
+                console.log('Selected element for click:', elementToClick.tagName, elementToClick.className);
+
+                // Последовательно пробуем разные методы клика
+                let clickSuccess = false;
+
+                // Метод A: Выполнение встроенного onClick обработчика
+                if (!clickSuccess && elementToClick.onclick) {
+                  console.log('Method A: Executing onclick handler directly');
+                  try {
+                    elementToClick.onclick();
+                    clickSuccess = true;
+                    console.log('onclick handler executed successfully');
+                  } catch (e) {
+                    console.warn('onclick handler execution failed:', e);
+                  }
+                  await new Promise(r => setTimeout(r, 300));
+                }
+                
+                // Метод B: Прямой .click() на элемент
+                if (!clickSuccess) {
+                  console.log('Method B: Direct .click() method');
+                  try {
+                    elementToClick.click();
+                    
+                    // Дополнительно если это ссылка, проверяем что переход произошел
+                    if (elementToClick.tagName === 'A' && elementToClick.href) {
+                      await new Promise(r => setTimeout(r, 300));
+                      console.log('Direct link click performed');
+                    }
+                  } catch (e) {
+                    console.warn('Direct click failed:', e);
+                  }
+                  await new Promise(r => setTimeout(r, 300));
+                }
+                
+                // Метод C: Полная последовательность событий мыши
+                console.log('Method C: Enhanced mouse event sequence');
+                try {
+                  // Получаем координаты центра элемента
+                  const rect = elementToClick.getBoundingClientRect();
+                  const centerX = rect.left + rect.width / 2;
+                  const centerY = rect.top + rect.height / 2;
+                  
+                  // 1. Предварительные события (наведение мыши)
+                  console.log('1. Sending mouseover/mouseenter events');
+                  elementToClick.dispatchEvent(new MouseEvent('mouseover', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    clientX: centerX,
+                    clientY: centerY
+                  }));
+                  
+                  elementToClick.dispatchEvent(new MouseEvent('mouseenter', {
+                    bubbles: false,
+                    cancelable: true,
+                    view: window,
+                    clientX: centerX,
+                    clientY: centerY
+                  }));
+                  
+                  await new Promise(r => setTimeout(r, 50));
+                  
+                  // 2. События нажатия
+                  console.log('2. Sending mousedown event');
+                  const mouseDownEvent = new MouseEvent('mousedown', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    button: 0,
+                    buttons: 1,
+                    clientX: centerX,
+                    clientY: centerY
+                  });
+                  elementToClick.dispatchEvent(mouseDownEvent);
+                  
+                  await new Promise(r => setTimeout(r, 50));
+                  
+                  // 3. События отпускания
+                  console.log('3. Sending mouseup and click events');
+                  const mouseUpEvent = new MouseEvent('mouseup', {
+                    bubbles: true, 
+                    cancelable: true,
+                    view: window,
+                    button: 0,
+                    buttons: 0,
+                    clientX: centerX,
+                    clientY: centerY
+                  });
+                  elementToClick.dispatchEvent(mouseUpEvent);
+                  
+                  const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    button: 0,
+                    buttons: 0,
+                    clientX: centerX,
+                    clientY: centerY
+                  });
+                  elementToClick.dispatchEvent(clickEvent);
+                  
+                  // Дополнительное событие для ссылок
+                  if (elementToClick.tagName === 'A') {
+                    console.log('4. Sending extra events for anchor element');
+                    // Эмулируем нажатие клавиши Enter для ссылок
+                    elementToClick.dispatchEvent(new KeyboardEvent('keydown', {
+                      bubbles: true,
+                      cancelable: true,
+                      key: 'Enter',
+                      code: 'Enter'
+                    }));
+                    
+                    elementToClick.dispatchEvent(new KeyboardEvent('keyup', {
+                      bubbles: true,
+                      cancelable: true,
+                      key: 'Enter',
+                      code: 'Enter'
+                    }));
+                  }
+                } catch (e) {
+                  console.warn('Enhanced mouse event sequence failed:', e);
+                }
+                
+                // Метод D: Программная навигация (если элемент это ссылка)
+                if (elementToClick.tagName === 'A' && elementToClick.getAttribute('href')) {
+                  console.log('Method D: Programmatic navigation for anchor');
+                  try {
+                    const href = elementToClick.getAttribute('href');
+                    if (href.startsWith('#')) {
+                      window.location.hash = href;
+                    } else {
+                      window.location.href = href;
+                    }
+                    console.log('Programmatic navigation executed');
+                  } catch (e) {
+                    console.warn('Programmatic navigation failed:', e);
+                  }
+                }
+                
+                foundInSearch = true;
                 break;
               }
             }
-            if (found) {
-              await new Promise(r => setTimeout(r, 1200));
+            if (foundInSearch) {
+              console.log(`Contact "${contact.name}" found in search and click attempted. Waiting for chat to open...`);
+              // alert('found!'); // Consider removing alert for automated scripts
+              await new Promise(r => setTimeout(r, 1200)); // Wait for chat to potentially open
               // После клика по результату поиска, очищаем поиск
-              searchInput.value = '';
-              searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+              if (searchInput.value !== '') { // Clear only if not already cleared
+                searchInput.value = '';
+                searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('Search input cleared after successful click.');
+              }
+            } else {
+              console.log(`Contact "${contact.name}" NOT found in search results after typing name.`);
             }
           } else {
-            console.warn('Search input not found for fallback chat switching.');
+            console.warn('Search input element NOT found for fallback chat switching.');
           }
         }
       }
       
       if (!switchSuccess) {
         console.warn(`Failed to switch to chat: ${contact.name} after ${maxSwitchAttempts} attempts. Skipping this contact.`);
+        failedCount++;
         continue; // Пропускаем этот контакт
       }
       
@@ -1012,7 +1304,6 @@
             bubbles: true, 
             cancelable: true 
           }));
-          
           await new Promise(r => setTimeout(r, 500)); // Увеличили задержку
           
           console.log('Final input verification:', {
@@ -1190,19 +1481,25 @@
         }
         if (sendSuccess) {
           console.log('Message send: SUCCESS for', contact.name);
+          successCount++;
         } else {
           console.warn('Message send: FAILED for', contact.name);
+          failedCount++;
         }
       } else {
         // Updated warning to reflect retries
         console.warn('Не удалось отправить сообщение для', contact.name, '- поле ввода или кнопка (даже после нескольких попыток) не найдены.');
+        failedCount++;
       }
     }
     // Показываем overlay обратно после завершения
     overlay.style.display = 'flex';
     console.log('Overlay restored');
-    alert('Сообщения отправлены!');
-    console.log('Bulk message sending finished.');
+    
+    // Показываем результаты рассылки с учетом успехов и неудач
+    const resultMessage = `Результаты отправки:\n✅ Успешно: ${successCount}\n❌ Ошибок: ${failedCount}`;
+    alert(resultMessage);
+    console.log(`Bulk message sending finished. Success: ${successCount}, Failed: ${failedCount}`);
     overlay.remove();
   };
 })();
