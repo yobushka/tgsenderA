@@ -211,6 +211,9 @@
   list.style.marginBottom = '10px';
   list.style.whiteSpace = 'pre-line'; // Добавлено для поддержки переносов строк
 
+  // --- Состояние выбранных контактов ---
+  const selectedContactIndexes = new Set(contacts.map((_, i) => i)); // по умолчанию все выбраны
+
   function renderContactList(filter = '') {
     list.innerHTML = '';
     contacts.forEach((c, i) => {
@@ -221,7 +224,14 @@
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.value = i;
-        cb.checked = true;
+        cb.checked = selectedContactIndexes.has(i);
+        cb.addEventListener('change', () => {
+          if (cb.checked) {
+            selectedContactIndexes.add(i);
+          } else {
+            selectedContactIndexes.delete(i);
+          }
+        });
         label.appendChild(cb);
         label.append(' ' + c.name);
         list.appendChild(label);
@@ -238,9 +248,24 @@
     renderContactList(val);
   });
 
-  btnAll.onclick = () => list.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true);
-  btnNone.onclick = () => list.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
-  btnInvert.onclick = () => list.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = !cb.checked);
+  btnAll.onclick = () => {
+    contacts.forEach((_, i) => selectedContactIndexes.add(i));
+    renderContactList(filterInput.value.trim().toLowerCase());
+  };
+  btnNone.onclick = () => {
+    selectedContactIndexes.clear();
+    renderContactList(filterInput.value.trim().toLowerCase());
+  };
+  btnInvert.onclick = () => {
+    contacts.forEach((_, i) => {
+      if (selectedContactIndexes.has(i)) {
+        selectedContactIndexes.delete(i);
+      } else {
+        selectedContactIndexes.add(i);
+      }
+    });
+    renderContactList(filterInput.value.trim().toLowerCase());
+  };
 
   // --- Поле для сообщения и кнопки ---
   const textarea = document.createElement('textarea');
@@ -284,7 +309,7 @@
   sendBtn.onclick = async () => {
     const msg = textarea.value.trim();
     if (!msg) return alert('Введите сообщение!');
-    const selected = Array.from(list.querySelectorAll('input[type=checkbox]:checked')).map(cb => contacts[cb.value]);
+    const selected = Array.from(selectedContactIndexes).map(i => contacts[i]);
     if (!selected.length) return alert('Выберите хотя бы один контакт!');
     if (!confirm(`Отправить сообщение в ${selected.length} контактов?`)) return;
 
