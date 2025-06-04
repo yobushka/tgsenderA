@@ -35,7 +35,7 @@
   // --- 3. Ждём, пока контакты появятся ---
   async function waitForContactsList() {
     for (let i = 0; i < 50; ++i) {
-      const items = document.querySelectorAll('.chat-list .contact-list-item');
+      const items = document.querySelectorAll('.chat-list.custom-scroll .contact-list-item');
       if (items.length > 0) return true;
       await new Promise(r => setTimeout(r, 100));
     }
@@ -45,27 +45,52 @@
   if (!ok) {
     alert('Контакты не найдены! Открой их вручную и повтори скрипт.');
     return;
-  }
+  }  // --- 4. Просим пользователя проскроллить контакты вручную ---
+  const scrollOverlay = document.createElement('div');
+  Object.assign(scrollOverlay.style, {
+    position: 'fixed', zIndex: 9999, top: 0, left: 0, width: '100vw', height: '100vh',
+    pointerEvents: 'none', // overlay не блокирует клики
+    background: 'rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+  });
+  const scrollPanel = document.createElement('div');
+  Object.assign(scrollPanel.style, {
+    background: '#fff', padding: '28px', borderRadius: '12px', width: '420px', maxWidth: '90vw',
+    boxShadow: '0 4px 24px #0002', fontFamily: 'sans-serif', color: '#222', textAlign: 'center',
+    pointerEvents: 'auto' // только панель ловит клики
+  });
+  const scrollTitle = document.createElement('h2');
+  scrollTitle.innerText = 'Прокрутите список контактов';
+  scrollPanel.appendChild(scrollTitle);
+  const scrollText = document.createElement('div');
+  scrollText.innerHTML =
+    'Пожалуйста, вручную прокрутите <b>список контактов</b> вниз до самого конца, чтобы все контакты были загружены.<br><br>' +
+    '<b>Когда закончите — нажмите кнопку "Готово" ниже.</b>';
+  scrollText.style.margin = '18px 0 24px 0';
+  scrollPanel.appendChild(scrollText);
+  const readyBtn = document.createElement('button');
+  readyBtn.textContent = 'Готово';
+  readyBtn.style.padding = '12px 32px';
+  readyBtn.style.fontSize = '1.1em';
+  readyBtn.style.background = '#48a1ec';
+  readyBtn.style.color = '#fff';
+  readyBtn.style.border = 'none';
+  readyBtn.style.borderRadius = '7px';
+  readyBtn.style.cursor = 'pointer';
+  readyBtn.style.fontWeight = 'bold';
+  readyBtn.style.marginTop = '10px';
+  scrollPanel.appendChild(readyBtn);
+  scrollOverlay.appendChild(scrollPanel);
+  document.body.appendChild(scrollOverlay);
 
-  // --- 4. Скроллим контейнер контактов для подгрузки всех контактов ---
-  const contactsContainer = document.querySelector('.chat-list');
-  if (contactsContainer) {
-    let lastCount = 0;
-    let stableTries = 0;
-    for (let i = 0; i < 50 && stableTries < 5; ++i) {
-      contactsContainer.scrollTop = contactsContainer.scrollHeight;
-      await new Promise(r => setTimeout(r, 200));
-      const items = contactsContainer.querySelectorAll('.contact-list-item');
-      if (items.length === lastCount) {
-        stableTries++;
-      } else {
-        stableTries = 0;
-        lastCount = items.length;
-      }
-    }
-  }
+  await new Promise(resolve => {
+    readyBtn.onclick = () => {
+      scrollOverlay.remove();
+      resolve();
+    };
+  });
+
   // --- 4. Собираем контакты ---
-  const contactDivs = Array.from(document.querySelectorAll('.chat-list .contact-list-item'));
+  const contactDivs = Array.from(document.querySelectorAll('.chat-list.custom-scroll .contact-list-item'));
   const contacts = contactDivs.map(item => {
     const button = item.querySelector('.ListItem-button[role="button"]');
     const nameEl = item.querySelector('.fullName');
@@ -140,19 +165,21 @@
   list.style.marginBottom = '10px';
   list.style.whiteSpace = 'pre-line'; // Добавлено для поддержки переносов строк
 
-  function renderContactList() {
+  function renderContactList(filter = '') {
     list.innerHTML = '';
     contacts.forEach((c, i) => {
-      const label = document.createElement('label');
-      label.style.display = 'block';
-      label.style.marginBottom = '3px';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = i;
-      cb.checked = true;
-      label.appendChild(cb);
-      label.append(' ' + c.name);
-      list.appendChild(label);
+      if (!filter || c.name.toLowerCase().includes(filter)) {
+        const label = document.createElement('label');
+        label.style.display = 'block';
+        label.style.marginBottom = '8px'; // Всегда отступ между контактами
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = i;
+        cb.checked = true;
+        label.appendChild(cb);
+        label.append(' ' + c.name);
+        list.appendChild(label);
+      }
     });
   }
   renderContactList();
@@ -162,21 +189,7 @@
   // Функция фильтрации
   filterInput.addEventListener('input', () => {
     const val = filterInput.value.trim().toLowerCase();
-    const labels = list.querySelectorAll('label');
-    contacts.forEach((c, i) => {
-      const label = labels[i];
-      if (!val || c.name.toLowerCase().includes(val)) {
-        label.style.display = '';
-      } else {
-        label.style.display = 'none';
-      }
-    });
-    // Добавляем перенос строки после каждого видимого контакта
-    Array.from(labels).forEach(label => {
-      if (label.style.display !== 'none') {
-        label.style.marginBottom = '8px';
-      }
-    });
+    renderContactList(val);
   });
 
   btnAll.onclick = () => list.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true);
@@ -277,7 +290,7 @@
             await new Promise(r => setTimeout(r, 1200));
             
             // Проверяем, что вернулись к списку контактов
-            const contactsList = document.querySelector('.chat-list .contact-list-item');
+            const contactsList = document.querySelector('.chat-list.custom-scroll .contact-list-item');
             if (contactsList) {
               console.log('Successfully returned to contacts list');
               backSuccess = true;
@@ -324,7 +337,7 @@
             await new Promise(r => setTimeout(r, 500));
             
             // Проверяем результат
-            const contactsList = document.querySelector('.chat-list .contact-list-item');
+            const contactsList = document.querySelector('.chat-list.custom-scroll .contact-list-item');
             if (contactsList) {
               console.log('Escape key successfully returned to contacts list');
               backSuccess = true;
@@ -371,7 +384,7 @@
                 await new Promise(r => setTimeout(r, 1200));
                 
                 // Финальная проверка
-                const contactsList = document.querySelector('.chat-list .contact-list-item');
+                const contactsList = document.querySelector('.chat-list.custom-scroll .contact-list-item');
                 if (contactsList) {
                   console.log('Successfully re-opened contacts via hamburger menu');
                   backSuccess = true;
@@ -393,7 +406,7 @@
               await new Promise(r => setTimeout(r, 500));
               
               // Если не помогло, возвращаем старый hash
-              const contactsList = document.querySelector('.chat-list .contact-list-item');
+              const contactsList = document.querySelector('.chat-list.custom-scroll .contact-list-item');
               if (!contactsList) {
                 window.location.hash = oldHash;
               } else {
