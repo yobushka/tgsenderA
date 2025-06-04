@@ -138,19 +138,25 @@
   list.style.maxHeight = '250px';
   list.style.overflowY = 'auto';
   list.style.marginBottom = '10px';
+  list.style.whiteSpace = 'pre-line'; // Добавлено для поддержки переносов строк
 
-  contacts.forEach((c, i) => {
-    const label = document.createElement('label');
-    label.style.display = 'block';
-    label.style.marginBottom = '3px';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.value = i;
-    cb.checked = true;
-    label.appendChild(cb);
-    label.append(' ' + c.name);
-    list.appendChild(label);
-  });
+  function renderContactList() {
+    list.innerHTML = '';
+    contacts.forEach((c, i) => {
+      const label = document.createElement('label');
+      label.style.display = 'block';
+      label.style.marginBottom = '3px';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = i;
+      cb.checked = true;
+      label.appendChild(cb);
+      label.append(' ' + c.name);
+      list.appendChild(label);
+    });
+  }
+  renderContactList();
+
   panel.appendChild(list);
 
   // Функция фильтрации
@@ -163,6 +169,12 @@
         label.style.display = '';
       } else {
         label.style.display = 'none';
+      }
+    });
+    // Добавляем перенос строки после каждого видимого контакта
+    Array.from(labels).forEach(label => {
+      if (label.style.display !== 'none') {
+        label.style.marginBottom = '8px';
       }
     });
   });
