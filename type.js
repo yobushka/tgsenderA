@@ -538,186 +538,12 @@
       if (!clickable || !clickable.closest('.ListItem, .ListItem-button, .contact-list-item')) {
         clickable = contact.element;
       }
-      // Пробуем разные методы переключения на контакт - оставляем только 2 оптимальных варианта
+      // Используем только поиск для переключения на контакт
+      console.log('Starting search for contact:', contact.name);
       let switchSuccess = false;
-      // Метод 1: Сначала пробуем через бургер-меню (сброс до списка контактов)
-      try {
-        // Открываем бургер-меню
-        const burger = document.querySelector('.ripple-container');
-        if (burger) {
-          let burgerBtn = burger;
-          for (let j = 0; j < 4 && burgerBtn; ++j) {
-            if (burgerBtn.onclick || burgerBtn.tagName === "BUTTON" || burgerBtn.getAttribute('role') === 'button') break;
-            burgerBtn = burgerBtn.parentElement;
-          }
-          if (burgerBtn) {
-            burgerBtn.click();
-            await new Promise(r => setTimeout(r, 700));
-            // Кликаем "Contacts"
-            const contactsBtn = Array.from(document.querySelectorAll('div[role="menuitem"].MenuItem.compact'))
-              .find(el => el.textContent.trim().toLowerCase().includes('contacts') && el.querySelector('.icon-user'));
-            if (contactsBtn) {
-              contactsBtn.click();
-              await new Promise(r => setTimeout(r, 1200));
-            }
-          }
-        }
-      } catch (e) { console.warn('Burger/Contacts reset failed', e); }
-
-      // Метод 2: Простой клик по элементу контакта
-      try {
-        console.log('Attempting simple click on contact element');
-        contact.element.click();
-      } catch (e) {
-        console.warn('Error in simple click method:', e);
-      }
-
-      // Метод 3: улучшенная последовательность клика на основе трассировки (mousedown + mouseup)
-      await new Promise(r => setTimeout(r, 200));
-      try {
-        console.log('Attempting enhanced click sequence based on trace data');
-
-        // Ищем ripple-container в элементе контакта по аналогии с трассировкой
-        let elementToClick = null;
-        const ripple = contact.element.querySelector('.ripple-container');
-        const listItem = contact.element.closest('.ListItem-button[role="button"]');
-        const rippleInListItem = listItem ? listItem.querySelector('.ripple-container') : null;
-        
-        if (ripple && ripple.getBoundingClientRect().width > 0) {
-          elementToClick = ripple;
-          console.log('Using ripple-container for click sequence');
-        } else if (rippleInListItem && rippleInListItem.getBoundingClientRect().width > 0) {
-          elementToClick = rippleInListItem;
-          console.log('Using ripple-container in ListItem-button for click sequence');
-        } else {
-          elementToClick = contact.element;
-          console.log('Using original element for click sequence');
-        }
-        
-        // Получаем координаты центра элемента для клика
-        const rect = elementToClick.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        
-        // Шаг 1: Событие mousedown (нажатие кнопки мыши)
-        console.log('Dispatching mousedown event');
-        const mouseDownEvent = new MouseEvent('mousedown', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          button: 0,
-          buttons: 1,
-          clientX: centerX,
-          clientY: centerY
-        });
-        elementToClick.dispatchEvent(mouseDownEvent);
-        
-        // Задержка между событиями (~180ms как в трассировке)
-        await new Promise(r => setTimeout(r, 180));
-        
-        // Шаг 2: Событие mouseup (отпускание кнопки мыши)
-        console.log('Dispatching mouseup event');
-        const mouseUpEvent = new MouseEvent('mouseup', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          button: 0,
-          buttons: 0,
-          clientX: centerX,
-          clientY: centerY
-        });
-        elementToClick.dispatchEvent(mouseUpEvent);
-        
-        // Шаг 3: Стандартное событие click для совместимости
-        console.log('Dispatching standard click event for compatibility');
-        const clickEvent = new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          clientX: centerX,
-          clientY: centerY
-        });
-        elementToClick.dispatchEvent(clickEvent);
-      } catch (e) {
-        console.warn('Error in enhanced click sequence method:', e);
-      }
-      // Проверяем правильное переключение контакта с несколькими попытками
-      let maxSwitchAttempts = 8;
-      let currentChatName = null;
-      for (let attempt = 0; attempt < maxSwitchAttempts; attempt++) {
-        await new Promise(r => setTimeout(r, 1200));
-        console.log(`Contact switch verification attempt ${attempt + 1}/${maxSwitchAttempts}`);
-        // Новый: ищем имя активного чата только в основном контейнере чата
-        const chatHeaderEl = document.querySelector('.chat-info-wrapper .ChatInfo .info .fullName, .chat-info-wrapper .ChatInfo .info .title h3');
-        currentChatName = chatHeaderEl && chatHeaderEl.textContent.trim();
-        if (currentChatName) {
-          console.log(`Found chat name using .chat-info-wrapper:`, currentChatName);
-        } else {
-          // Fallback: старые селекторы, если основной не сработал
-          const chatSelectors = [
-            '.ChatInfo .title h3',
-            '.ChatInfo h3',
-            '.chat-info .title',
-            '.middle-column-header .chat-title',
-            '[data-testid="chat-title"]',
-            '.chat-header .title',
-            '.header-title',
-            '.conversation-title',
-            '.chat-name',
-            '.peer-title'
-          ];
-          for (const selector of chatSelectors) {
-            const chatHeader = document.querySelector(selector);
-            if (chatHeader && chatHeader.textContent.trim()) {
-              currentChatName = chatHeader.textContent.trim();
-              console.log(`Fallback chat name using selector "${selector}":`, currentChatName);
-              break;
-            }
-          }
-        }
-        
-        // Дополнительная проверка через URL или другие признаки
-        if (!currentChatName) {
-          console.log('Chat name not found via selectors, trying alternative methods...');
-          
-          // Проверяем URL hash
-          if (window.location.hash) {
-            const hashMatch = window.location.hash.match(/#\/im\?p=@([^&]+)/);
-            if (hashMatch) {
-              currentChatName = decodeURIComponent(hashMatch[1]);
-              console.log('Found chat name from URL hash:', currentChatName);
-            }
-          }
-          
-          // Проверяем через document.title
-          if (!currentChatName && document.title && document.title !== 'Telegram') {
-            const titleParts = document.title.split(' – ');
-            if (titleParts.length > 1) {
-              currentChatName = titleParts[0];
-              console.log('Found chat name from document title:', currentChatName);
-            }
-          }
-        }
-        
-        console.log(`Verification attempt ${attempt+1}: Expected "${contact.name}", Found "${currentChatName}"`);
-        
-        // Проверяем соответствие имени (с учетом возможных вариций)
-        if (currentChatName) {
-          const nameMatches = [
-            currentChatName === contact.name,
-            currentChatName.includes(contact.name),
-            contact.name.includes(currentChatName),
-            currentChatName.toLowerCase() === contact.name.toLowerCase(),
-            currentChatName.toLowerCase().includes(contact.name.toLowerCase()),
-            contact.name.toLowerCase().includes(currentChatName.toLowerCase())
-          ];
-          if (nameMatches.some(Boolean)) {
-            switchSuccess = true;
-            break;
-          }
-        }
-        // Если переключение не удалось, пробуем поиск через строку поиска Telegram Web
-        if (attempt === 3 && !switchSuccess) {
+      
+      // Поиск через строку поиска Telegram Web - теперь это основной и единственный метод
+      {
           console.log('Trying to switch chat via search bar...');
           // Ищем строку поиска
           let searchInput = document.querySelector('input[type="search"], input[placeholder*="earch"], .search-input input');
@@ -991,7 +817,6 @@
             }
             if (foundInSearch) {
               console.log(`Contact "${contact.name}" found in search and click attempted. Waiting for chat to open...`);
-              // alert('found!'); // Consider removing alert for automated scripts
               await new Promise(r => setTimeout(r, 1200)); // Wait for chat to potentially open
               // После клика по результату поиска, очищаем поиск
               if (searchInput.value !== '') { // Clear only if not already cleared
@@ -999,17 +824,59 @@
                 searchInput.dispatchEvent(new Event('input', { bubbles: true }));
                 console.log('Search input cleared after successful click.');
               }
+              
+              // Проверяем, что чат действительно открылся
+              console.log('Verifying that the contact chat was opened successfully...');
+              let currentChatName = null;
+              let chatOpenSuccess = false;
+              
+              // Ищем имя активного чата
+              for (let verifyAttempt = 0; verifyAttempt < 5; verifyAttempt++) {
+                await new Promise(r => setTimeout(r, 500));
+                
+                // Ищем имя активного чата в основном контейнере
+                const chatHeaderEl = document.querySelector('.chat-info-wrapper .ChatInfo .info .fullName, .chat-info-wrapper .ChatInfo .info .title h3');
+                currentChatName = chatHeaderEl && chatHeaderEl.textContent.trim();
+                
+                if (currentChatName) {
+                  console.log(`Found chat name: "${currentChatName}"`);
+                  
+                  // Проверяем соответствие имени (с учетом возможных вариаций)
+                  const nameMatches = [
+                    currentChatName === contact.name,
+                    currentChatName.includes(contact.name),
+                    contact.name.includes(currentChatName),
+                    currentChatName.toLowerCase() === contact.name.toLowerCase(),
+                    currentChatName.toLowerCase().includes(contact.name.toLowerCase()),
+                    contact.name.toLowerCase().includes(currentChatName.toLowerCase())
+                  ];
+                  
+                  if (nameMatches.some(Boolean)) {
+                    console.log('Chat name matches contact name. Chat opened successfully!');
+                    chatOpenSuccess = true;
+                    switchSuccess = true;
+                    break;
+                  } else {
+                    console.log(`Chat name does not match expected "${contact.name}"`);
+                  }
+                } else {
+                  console.log('No chat name found yet, waiting...');
+                }
+              }
+              
+              if (!chatOpenSuccess) {
+                console.warn(`Failed to verify that chat "${contact.name}" was opened. Will try to continue anyway.`);
+              }
             } else {
               console.log(`Contact "${contact.name}" NOT found in search results after typing name.`);
             }
           } else {
-            console.warn('Search input element NOT found for fallback chat switching.');
+            console.warn('Search input element NOT found for search-based chat switching.');
           }
-        }
       }
       
       if (!switchSuccess) {
-        console.warn(`Failed to switch to chat: ${contact.name} after ${maxSwitchAttempts} attempts. Skipping this contact.`);
+        console.warn(`Failed to switch to chat: ${contact.name}. Skipping this contact.`);
         failedCount++;
         continue; // Пропускаем этот контакт
       }
