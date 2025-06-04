@@ -82,21 +82,53 @@
   scrollOverlay.appendChild(scrollPanel);
   document.body.appendChild(scrollOverlay);
 
+  // --- 4. Собираем контакты ---
+  // Массив для накопления уникальных элементов контактов
+  const contactDivsArr = [];
+  const contactDivsSet = new Set();
+  function scanVisibleContacts() {
+    const newDivs = Array.from(document.querySelectorAll('.chat-list.custom-scroll .contact-list-item'));
+    newDivs.forEach(div => {
+      if (!contactDivsSet.has(div)) {
+        contactDivsSet.add(div);
+        contactDivsArr.push(div);
+      }
+    });
+    // Отладка: показываем сколько всего уникальных контактов накоплено
+    const names = contactDivsArr.map(item => {
+      const nameEl = item.querySelector('.fullName');
+      return nameEl ? nameEl.textContent.trim() : '(Без имени)';
+    });
+    console.log('[TGSENDER][DEBUG] Накоплено контактов:', contactDivsArr.length, names);
+  }
+  // Запускаем периодический сбор сразу после overlay
+  let scanInterval = setInterval(scanVisibleContacts, 300);
+
   await new Promise(resolve => {
     readyBtn.onclick = () => {
+      // Останавливаем сбор при нажатии 'Готово'
+      clearInterval(scanInterval);
+      // Финальный отладочный вывод
+      const names = contactDivsArr.map(item => {
+        const nameEl = item.querySelector('.fullName');
+        return nameEl ? nameEl.textContent.trim() : '(Без имени)';
+      });
+      console.log('[TGSENDER][DEBUG] Итоговый список контактов:', contactDivsArr.length, names);
       scrollOverlay.remove();
       resolve();
     };
   });
 
-  // --- 4. Собираем контакты ---
-  const contactDivs = Array.from(document.querySelectorAll('.chat-list.custom-scroll .contact-list-item'));
-  const contacts = contactDivs.map(item => {
+  // Формируем массив контактов для рассылки
+  const contacts = contactDivsArr.map(item => {
     const button = item.querySelector('.ListItem-button[role="button"]');
     const nameEl = item.querySelector('.fullName');
     const name = nameEl ? nameEl.textContent.trim() : '(Без имени)';
     return button && name ? { name, element: button } : null;
   }).filter(Boolean);
+
+  // Отладка: выводим список контактов в консоль
+  console.log('[TGSENDER] Получено контактов:', contacts.length, contacts.map(c => c.name));
 
   if (!contacts.length) {
     alert('Список контактов пуст!');
